@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -8,6 +9,7 @@ import {
   Param,
   ParseFilePipe,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -21,12 +23,16 @@ import {
   AssetBulkUploadCheckResponseDto,
   AssetMediaResponseDto,
   AssetMediaStatus,
+  AssetUploadSessionResponseDto,
 } from 'src/dtos/asset-media-response.dto.js';
 import {
   AssetBulkUploadCheckDto,
   AssetMediaCreateDto,
   AssetMediaOptionsDto,
   AssetMediaSize,
+  AssetUploadSessionChunkParamDto,
+  AssetUploadSessionCreateDto,
+  AssetUploadSessionFinishDto,
 } from 'src/dtos/asset-media.dto.js';
 import { AssetDownloadOriginalDto } from 'src/dtos/asset.dto.js';
 import { type AuthDto } from 'src/dtos/auth.dto.js';
@@ -87,6 +93,87 @@ export class AssetMediaController {
     }
 
     return responseDto;
+  }
+
+  @Post('upload-sessions')
+  @Authenticated({ permission: Permission.AssetUpload })
+  @Endpoint({
+    summary: 'Create upload session',
+    description:
+      'Starts a chunked upload. Upload the file in numbered chunks to the session, then finish it to create the asset.',
+    history: new HistoryBuilder().added('v3.4.0').beta('v3.4.0'),
+  })
+  createUploadSession(
+    @Auth() auth: AuthDto,
+    @Body() dto: AssetUploadSessionCreateDto,
+  ): Promise<AssetUploadSessionResponseDto> {
+    return this.service.createUploadSession(auth, dto);
+  }
+
+  @Get('upload-sessions/:id')
+  @Authenticated({ permission: Permission.AssetUpload })
+  @Endpoint({
+    summary: 'Get upload session',
+    description: 'Lists the chunks received so far, so an interrupted upload can be resumed.',
+    history: new HistoryBuilder().added('v3.4.0').beta('v3.4.0'),
+  })
+  getUploadSession(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<AssetUploadSessionResponseDto> {
+    return this.service.getUploadSession(auth, id);
+  }
+
+  @Put('upload-sessions/:id/chunks/:index')
+  @Authenticated({ permission: Permission.AssetUpload })
+  @ApiConsumes('application/octet-stream')
+  @ApiBody({ description: 'Chunk data', schema: { type: 'string', format: 'binary' } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Endpoint({
+    summary: 'Upload chunk',
+    description:
+      'Stores one chunk of the file. Uploading the same chunk number again replaces it, so a failed chunk can simply be retried.',
+    history: new HistoryBuilder().added('v3.4.0').beta('v3.4.0'),
+  })
+  uploadSessionChunk(
+    @Auth() auth: AuthDto,
+    @Param() dto: AssetUploadSessionChunkParamDto,
+    @Req() req: Request,
+  ): Promise<void> {
+    return this.service.uploadSessionChunk(auth, dto, req);
+  }
+
+  @Post('upload-sessions/:id/finish')
+  @Authenticated({ permission: Permission.AssetUpload })
+  @ApiResponse({ status: 200, description: 'Asset is a duplicate', type: AssetMediaResponseDto })
+  @ApiResponse({ status: 201, description: 'Asset uploaded successfully', type: AssetMediaResponseDto })
+  @Endpoint({
+    summary: 'Finish upload session',
+    description: 'Assembles the uploaded chunks in order and creates the asset.',
+    history: new HistoryBuilder().added('v3.4.0').beta('v3.4.0'),
+  })
+  async finishUploadSession(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Body() dto: AssetUploadSessionFinishDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AssetMediaResponseDto> {
+    const responseDto = await this.service.finishUploadSession(auth, id, dto);
+
+    if (responseDto.status === AssetMediaStatus.DUPLICATE) {
+      res.status(HttpStatus.OK);
+    }
+
+    return responseDto;
+  }
+
+  @Delete('upload-sessions/:id')
+  @Authenticated({ permission: Permission.AssetUpload })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Endpoint({
+    summary: 'Cancel upload session',
+    description: 'Discards the session and every chunk uploaded to it.',
+    history: new HistoryBuilder().added('v3.4.0').beta('v3.4.0'),
+  })
+  cancelUploadSession(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<void> {
+    return this.service.cancelUploadSession(auth, id);
   }
 
   @Get(':id/original')
