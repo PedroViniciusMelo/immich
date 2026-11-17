@@ -347,15 +347,20 @@ export class AssetMediaService extends BaseService {
     }
 
     const originalPath = join(folder, sanitize(`${id}${getFilenameExtension(dto.filename)}`));
-    await this.storageRepository.concatFiles(
-      chunks.map((chunk) => chunk.path),
-      originalPath,
-    );
+    let fileChecksum: Buffer;
+    try {
+      await this.storageRepository.concatFiles(
+        chunks.map((chunk) => chunk.path),
+        originalPath,
+      );
 
-    const fileChecksum = await this.cryptoRepository.hashFile(originalPath);
-    if (checksum && !fileChecksum.equals(fromChecksum(checksum))) {
+      fileChecksum = await this.cryptoRepository.hashFile(originalPath);
+      if (checksum && !fileChecksum.equals(fromChecksum(checksum))) {
+        throw new BadRequestException('Checksum does not match the received chunks');
+      }
+    } catch (error) {
       await this.storageRepository.unlink(originalPath);
-      throw new BadRequestException('Checksum does not match the received chunks');
+      throw error;
     }
 
     await this.storageRepository.unlinkDir(sessionFolder, { recursive: true, force: true });

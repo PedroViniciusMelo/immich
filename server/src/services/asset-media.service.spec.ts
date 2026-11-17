@@ -1153,6 +1153,17 @@ describe(AssetMediaService.name, () => {
         expect(mocks.storage.concatFiles).not.toHaveBeenCalled();
       });
 
+      it('should remove a partially assembled file and keep the chunks', async () => {
+        withChunks(mocks, { '1': 30 });
+        mocks.storage.concatFiles.mockRejectedValue(new Error('ENOSPC: no space left on device'));
+
+        await expect(sut.finishUploadSession(authStub.user1, sessionId, finishDto)).rejects.toThrow('ENOSPC');
+
+        expect(mocks.storage.unlink).toHaveBeenCalledWith(originalPath);
+        expect(mocks.storage.unlinkDir).not.toHaveBeenCalled();
+        expect(mocks.asset.create).not.toHaveBeenCalled();
+      });
+
       it('should reject and keep the chunks when the checksum does not match', async () => {
         withChunks(mocks, { '1': 30 });
         mocks.crypto.hashFile.mockResolvedValue(checksum);
