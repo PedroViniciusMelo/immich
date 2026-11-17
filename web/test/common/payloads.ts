@@ -69,7 +69,7 @@ const userConfig = (overrides: Partial<ResponseOf<'getUserConfig'>> = {}): Respo
   image: { thumbnail: { size: 250 }, preview: { size: 1440 }, fullsize: { enabled: false } },
   trash: { enabled: true, days: 30 },
   notifications: { smtp: { enabled: false } },
-  server: { externalDomain: '', loginPageMessage: '', publicUsers: true },
+  server: { externalDomain: '', loginPageMessage: '', publicUsers: true, uploadChunkSizeMb: 50 },
   user: { deleteDelay: 7 },
   ...overrides,
 });
@@ -285,7 +285,7 @@ const adminConfig = (overrides: Partial<ResponseOf<'getAdminConfig'>> = {}): Res
   trash: { enabled: true, days: 30 },
   theme: { customCss: '' },
   library: { scan: { enabled: true, cronExpression: '0 0 * * *' }, watch: { enabled: false } },
-  server: { externalDomain: '', loginPageMessage: '', publicUsers: true },
+  server: { externalDomain: '', loginPageMessage: '', publicUsers: true, uploadChunkSizeMb: 50 },
   notifications: {
     smtp: {
       enabled: false,

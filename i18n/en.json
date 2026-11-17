@@ -370,6 +370,8 @@
     "server_settings": "Server Settings",
     "server_settings_description": "Manage server settings",
     "server_stats_page_description": "Admin server statistics page",
+    "server_upload_chunk_size": "Upload chunk size (MiB)",
+    "server_upload_chunk_size_description": "Large files are uploaded by the mobile app in chunks of up to this size. Lower it if a reverse proxy limits the request body size, for example to 100 MB.",
     "server_welcome_message": "Welcome message",
     "server_welcome_message_description": "A message that is displayed on the login page.",
     "settings_page_description": "Admin settings page",

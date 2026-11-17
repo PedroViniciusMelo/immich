@@ -44,6 +44,18 @@
           bind:checked={configToEdit.server.publicUsers}
         />
 
+        <SettingInputField
+          inputType={SettingInputFieldType.NUMBER}
+          required={true}
+          min={1}
+          max={4096}
+          label={$t('admin.server_upload_chunk_size')}
+          description={$t('admin.server_upload_chunk_size_description')}
+          {disabled}
+          bind:value={configToEdit.server.uploadChunkSizeMb}
+          isEdited={configToEdit.server.uploadChunkSizeMb !== config.server.uploadChunkSizeMb}
+        />
+
         <div class="ms-4">
           <SettingButtonsRow bind:configToEdit keys={['server']} {disabled} />
         </div>
