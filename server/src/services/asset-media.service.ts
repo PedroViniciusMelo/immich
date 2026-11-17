@@ -278,7 +278,11 @@ export class AssetMediaService extends BaseService {
   async uploadSessionChunk(auth: AuthDto, { id, index }: AssetUploadSessionChunkParamDto, data: Readable) {
     await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
     const { sessionFolder } = this.getUploadSessionPaths(auth, id);
-    await this.getUploadSessionChunks(sessionFolder);
+    const chunks = await this.getUploadSessionChunks(sessionFolder);
+    this.requireQuota(
+      auth,
+      chunks.reduce((total, chunk) => total + chunk.size, 0),
+    );
 
     const chunkPath = join(sessionFolder, String(index));
     const partPath = `${chunkPath}.${this.cryptoRepository.randomUUID()}.part`;

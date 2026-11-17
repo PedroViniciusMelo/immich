@@ -1053,6 +1053,20 @@ describe(AssetMediaService.name, () => {
         expect(mocks.storage.rename).not.toHaveBeenCalled();
       });
 
+      it('should reject chunks once the received data exceeds the quota', async () => {
+        withChunks(mocks, { '1': 60 });
+        const auth = {
+          ...authStub.user1,
+          user: { ...authStub.user1.user, quotaSizeInBytes: 50, quotaUsageInBytes: 0 },
+        };
+
+        await expect(
+          sut.uploadSessionChunk(auth, { id: sessionId, index: 2 }, Readable.from([])),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        expect(mocks.storage.writeStream).not.toHaveBeenCalled();
+      });
+
       it('should throw when the session does not exist', async () => {
         mocks.storage.readdir.mockRejectedValue(new Error('ENOENT'));
 
