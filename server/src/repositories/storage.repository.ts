@@ -15,6 +15,7 @@ import {
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PassThrough, Readable, Writable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { createGunzip, createGzip } from 'node:zlib';
 import picomatch from 'picomatch';
 import { CrawlOptionsDto, WalkOptionsDto } from 'src/dtos/library.dto.js';
@@ -81,6 +82,21 @@ export class StorageRepository {
 
   createWriteStream(filepath: string): Writable {
     return createWriteStream(filepath, { flags: 'w', flush: true });
+  }
+
+  writeStream(filepath: string, stream: Readable) {
+    return pipeline(stream, createWriteStream(filepath, { flags: 'w' }));
+  }
+
+  concatFiles(sources: string[], target: string) {
+    return pipeline(
+      async function* () {
+        for (const source of sources) {
+          yield* createReadStream(source);
+        }
+      },
+      createWriteStream(target, { flags: 'wx' }),
+    );
   }
 
   createOrOverwriteFile(filepath: string, buffer: Buffer) {
