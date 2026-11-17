@@ -11,7 +11,7 @@ import { AssetMediaStatus, AssetRejectReason, AssetUploadAction } from 'src/dtos
 import { AssetMediaCreateDto, AssetMediaSize, UploadFieldName } from 'src/dtos/asset-media.dto.js';
 import { MapAsset } from 'src/dtos/asset-response.dto.js';
 import { AssetEditAction } from 'src/dtos/editing.dto.js';
-import { AssetFileType, AssetType, AssetVisibility, CacheControl, JobName } from 'src/enum.js';
+import { AssetFileType, AssetType, AssetVisibility, CacheControl, JobName, JobStatus } from 'src/enum.js';
 import { AuthRequest } from 'src/middleware/auth.guard.js';
 import { AssetMediaService } from 'src/services/asset-media.service.js';
 import type { UploadBody } from 'src/types.js';
@@ -1118,6 +1118,22 @@ describe(AssetMediaService.name, () => {
         expect(mocks.storage.unlink).toHaveBeenCalledWith(originalPath);
         expect(mocks.storage.unlinkDir).not.toHaveBeenCalled();
         expect(mocks.asset.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('handleUploadSessionCleanup', () => {
+      it('should remove sessions without activity for a day', async () => {
+        const expired = `${sessionFolder}-expired`;
+        mocks.storage.findDirectories.mockResolvedValue([sessionFolder, expired]);
+        mocks.storage.stat.mockImplementation((path) =>
+          Promise.resolve({ mtime: path === expired ? new Date('2020-01-01') : new Date() } as Stats),
+        );
+
+        await expect(sut.handleUploadSessionCleanup()).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.storage.findDirectories).toHaveBeenCalledWith('/data/upload', '*/*/*/*.chunks');
+        expect(mocks.storage.unlinkDir).toHaveBeenCalledTimes(1);
+        expect(mocks.storage.unlinkDir).toHaveBeenCalledWith(expired, { recursive: true, force: true });
       });
     });
 

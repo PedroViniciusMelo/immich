@@ -934,6 +934,8 @@ export enum JobName {
 
   HlsSessionCleanup = 'HlsSessionCleanup',
 
+  UploadSessionCleanup = 'UploadSessionCleanup',
+
   MemoryCleanup = 'MemoryCleanup',
   MemoryGenerate = 'MemoryGenerate',
 

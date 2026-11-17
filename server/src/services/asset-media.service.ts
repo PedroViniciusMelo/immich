@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { DateTime } from 'luxon';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import sanitize from 'sanitize-filename';
-import { UPLOAD_SESSION_FOLDER_SUFFIX } from 'src/constants.js';
+import { UPLOAD_SESSION_EXPIRATION_HOURS, UPLOAD_SESSION_FOLDER_SUFFIX } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { Asset, AuthSharedLink } from 'src/database.js';
+import { OnJob } from 'src/decorators.js';
 import {
   AssetBulkUploadCheckResponseDto,
   AssetMediaResponseDto,
@@ -31,7 +33,9 @@ import {
   CacheControl,
   ChecksumAlgorithm,
   JobName,
+  JobStatus,
   Permission,
+  QueueName,
   StorageFolder,
 } from 'src/enum.js';
 import { AuthRequest } from 'src/middleware/auth.guard.js';
@@ -334,6 +338,30 @@ export class AssetMediaService extends BaseService {
     const { sessionFolder } = this.getUploadSessionPaths(auth, id);
     await this.getUploadSessionChunks(sessionFolder);
     await this.storageRepository.unlinkDir(sessionFolder, { recursive: true, force: true });
+  }
+
+  @OnJob({ name: JobName.UploadSessionCleanup, queue: QueueName.BackgroundTask })
+  async handleUploadSessionCleanup(): Promise<JobStatus> {
+    const expiredBefore = DateTime.now().minus({ hours: UPLOAD_SESSION_EXPIRATION_HOURS }).toJSDate();
+    const sessionFolders = await this.storageRepository.findDirectories(
+      StorageCore.getBaseFolder(StorageFolder.Upload),
+      `*/*/*/*${UPLOAD_SESSION_FOLDER_SUFFIX}`,
+    );
+
+    let removed = 0;
+    for (const sessionFolder of sessionFolders) {
+      const { mtime } = await this.storageRepository.stat(sessionFolder);
+      if (mtime >= expiredBefore) {
+        continue;
+      }
+
+      await this.storageRepository.unlinkDir(sessionFolder, { recursive: true, force: true });
+      removed++;
+    }
+
+    this.logger.log(`Removed ${removed} expired upload sessions`);
+
+    return JobStatus.Success;
   }
 
   private getUploadSessionPaths(auth: AuthDto, id: string) {

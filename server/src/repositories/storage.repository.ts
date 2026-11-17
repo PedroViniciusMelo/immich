@@ -258,6 +258,10 @@ export class StorageRepository {
     });
   }
 
+  findDirectories(cwd: string, pattern: string): Promise<string[]> {
+    return fastGlob.glob(pattern, { cwd, absolute: true, onlyDirectories: true, followSymbolicLinks: false });
+  }
+
   async *walk(walkOptions: WalkOptionsDto): AsyncGenerator<string[]> {
     const { pathsToCrawl, exclusionPatterns, includeHidden } = walkOptions;
     if (pathsToCrawl.length === 0) {
