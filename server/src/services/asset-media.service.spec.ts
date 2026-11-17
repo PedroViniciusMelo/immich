@@ -1113,6 +1113,7 @@ describe(AssetMediaService.name, () => {
     describe('finishUploadSession', () => {
       const checksum = Buffer.from('file hash');
       const originalPath = `/data/upload/${authStub.user1.user.id}/f6/d2/${sessionId}.mp4`;
+      const assembledPath = `${sessionFolder}/assembled.mp4`;
 
       it('should assemble the chunks and create the asset', async () => {
         withChunks(mocks, { '1': 10, '2': 10, '3': 10 });
@@ -1125,8 +1126,9 @@ describe(AssetMediaService.name, () => {
 
         expect(mocks.storage.concatFiles).toHaveBeenCalledWith(
           [`${sessionFolder}/1`, `${sessionFolder}/2`, `${sessionFolder}/3`],
-          originalPath,
+          assembledPath,
         );
+        expect(mocks.storage.rename).toHaveBeenCalledWith(assembledPath, originalPath);
         expect(mocks.storage.unlinkDir).toHaveBeenCalledWith(sessionFolder, { recursive: true, force: true });
         expect(mocks.asset.create).toHaveBeenCalledWith(
           expect.objectContaining({ checksum, originalPath, originalFileName: 'video.mp4', type: AssetType.Video }),
@@ -1159,7 +1161,8 @@ describe(AssetMediaService.name, () => {
 
         await expect(sut.finishUploadSession(authStub.user1, sessionId, finishDto)).rejects.toThrow('ENOSPC');
 
-        expect(mocks.storage.unlink).toHaveBeenCalledWith(originalPath);
+        expect(mocks.storage.unlink).toHaveBeenCalledWith(assembledPath);
+        expect(mocks.storage.rename).not.toHaveBeenCalled();
         expect(mocks.storage.unlinkDir).not.toHaveBeenCalled();
         expect(mocks.asset.create).not.toHaveBeenCalled();
       });
@@ -1172,7 +1175,8 @@ describe(AssetMediaService.name, () => {
           sut.finishUploadSession(authStub.user1, sessionId, { ...finishDto, checksum: 'a'.repeat(40) }),
         ).rejects.toThrow('Checksum does not match the received chunks');
 
-        expect(mocks.storage.unlink).toHaveBeenCalledWith(originalPath);
+        expect(mocks.storage.unlink).toHaveBeenCalledWith(assembledPath);
+        expect(mocks.storage.rename).not.toHaveBeenCalled();
         expect(mocks.storage.unlinkDir).not.toHaveBeenCalled();
         expect(mocks.asset.create).not.toHaveBeenCalled();
       });

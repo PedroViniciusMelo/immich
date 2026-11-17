@@ -95,7 +95,7 @@ export class StorageRepository {
           yield* createReadStream(source);
         }
       },
-      createWriteStream(target, { flags: 'wx' }),
+      createWriteStream(target, { flags: 'w' }),
     );
   }
 

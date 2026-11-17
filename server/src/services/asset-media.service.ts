@@ -346,23 +346,26 @@ export class AssetMediaService extends BaseService {
       throw new BadRequestException(`Expected ${size} bytes, but received ${receivedSize}`);
     }
 
-    const originalPath = join(folder, sanitize(`${id}${getFilenameExtension(dto.filename)}`));
+    const extension = getFilenameExtension(dto.filename);
+    const assembledPath = join(sessionFolder, sanitize(`assembled${extension}`));
     let fileChecksum: Buffer;
     try {
       await this.storageRepository.concatFiles(
         chunks.map((chunk) => chunk.path),
-        originalPath,
+        assembledPath,
       );
 
-      fileChecksum = await this.cryptoRepository.hashFile(originalPath);
+      fileChecksum = await this.cryptoRepository.hashFile(assembledPath);
       if (checksum && !fileChecksum.equals(fromChecksum(checksum))) {
         throw new BadRequestException('Checksum does not match the received chunks');
       }
     } catch (error) {
-      await this.storageRepository.unlink(originalPath);
+      await this.storageRepository.unlink(assembledPath);
       throw error;
     }
 
+    const originalPath = join(folder, sanitize(`${id}${extension}`));
+    await this.storageRepository.rename(assembledPath, originalPath);
     await this.storageRepository.unlinkDir(sessionFolder, { recursive: true, force: true });
 
     return this.uploadAsset(auth, dto, {
