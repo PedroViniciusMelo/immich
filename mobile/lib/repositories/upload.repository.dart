@@ -67,65 +67,68 @@ class UploadRepository {
     Client? httpClient,
   }) async {
     final String savedEndpoint = Store.get(StoreKey.serverEndpoint);
-
-    ProgressMultipartRequest buildRequest() {
-      final request = ProgressMultipartRequest(
-        'POST',
-        Uri.parse('$savedEndpoint/assets'),
-        abortTrigger: cancelToken?.future,
-        onProgress: onProgress,
-      );
-      request.fields.addAll(fields);
-      request.files.add(MultipartFile("assetData", file.openRead(), file.lengthSync(), filename: originalFileName));
-      return request;
-    }
-
     try {
       final client = httpClient ?? NetworkRepository.client;
-      StreamedResponse response;
-      try {
-        response = await client.send(buildRequest());
-      } on RequestAbortedException {
-        rethrow;
-      } on ClientException catch (error) {
-        logger.warning("Upload $logContext failed before a response, resending once", error);
-        response = await client.send(buildRequest());
-      }
+      final length = file.lengthSync();
+      final response = await _sendWithResend(client, logContext, () {
+        final request = ProgressMultipartRequest(
+          'POST',
+          Uri.parse('$savedEndpoint/assets'),
+          abortTrigger: cancelToken?.future,
+          onProgress: onProgress,
+        );
+        request.fields.addAll(fields);
+        request.files.add(MultipartFile("assetData", file.openRead(), length, filename: originalFileName));
+        return request;
+      });
 
-      final responseBodyString = await response.stream.bytesToString();
-
-      if (![200, 201].contains(response.statusCode)) {
-        String? errorMessage;
-
-        if (response.statusCode == 413) {
-          errorMessage = 'Error(413) File is too large to upload';
-          return UploadResult.error(statusCode: response.statusCode, errorMessage: errorMessage);
-        }
-
-        try {
-          final error = jsonDecode(responseBodyString);
-          errorMessage = error['message'] ?? error['error'];
-        } catch (_) {
-          errorMessage = responseBodyString.isNotEmpty
-              ? responseBodyString
-              : 'Upload failed with status ${response.statusCode}';
-        }
-
-        return UploadResult.error(statusCode: response.statusCode, errorMessage: errorMessage);
-      }
-
-      try {
-        final responseBody = jsonDecode(responseBodyString);
-        return UploadResult.success(remoteAssetId: responseBody['id'] as String);
-      } catch (e) {
-        return UploadResult.error(errorMessage: 'Failed to parse server response');
-      }
+      return _toUploadResult(response.statusCode, await response.stream.bytesToString());
     } on RequestAbortedException {
       logger.warning("Upload $logContext was cancelled");
       return UploadResult.cancelled();
     } catch (error, stackTrace) {
       logger.warning("Error uploading $logContext", error, stackTrace);
       return UploadResult(isSuccess: false, isCancelled: false, errorMessage: error.toString(), error: error);
+    }
+  }
+
+  Future<StreamedResponse> _sendWithResend(
+    Client client,
+    String logContext,
+    BaseRequest Function() buildRequest,
+  ) async {
+    try {
+      return await client.send(buildRequest());
+    } on RequestAbortedException {
+      rethrow;
+    } on ClientException catch (error) {
+      logger.warning("Upload $logContext failed before a response, resending once", error);
+      return client.send(buildRequest());
+    }
+  }
+
+  static UploadResult _toUploadResult(int statusCode, String body) {
+    if (![200, 201].contains(statusCode)) {
+      if (statusCode == 413) {
+        return UploadResult.error(statusCode: statusCode, errorMessage: 'Error(413) File is too large to upload');
+      }
+
+      String? errorMessage;
+      try {
+        final error = jsonDecode(body);
+        errorMessage = error['message'] ?? error['error'];
+      } catch (_) {
+        errorMessage = body.isNotEmpty ? body : 'Upload failed with status $statusCode';
+      }
+
+      return UploadResult.error(statusCode: statusCode, errorMessage: errorMessage);
+    }
+
+    try {
+      final responseBody = jsonDecode(body);
+      return UploadResult.success(remoteAssetId: responseBody['id'] as String);
+    } catch (e) {
+      return UploadResult.error(errorMessage: 'Failed to parse server response');
     }
   }
 }
