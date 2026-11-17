@@ -2,7 +2,8 @@ import { authManager } from '#lib/managers/auth-manager.svelte.ts';
 import { uploadManager } from '#lib/managers/upload-manager.svelte.ts';
 import { addAssetsToAlbumsMutation } from '#lib/queries/album.query.ts';
 import { checkBulkUploadMutation } from '#lib/queries/asset.query.ts';
-import { executeMutation } from '#lib/queries/client.ts';
+import { executeMutation, queryClient } from '#lib/queries/client.ts';
+import { getUserConfigQuery } from '#lib/queries/config-user.query.ts';
 import { uploadAssetsStore } from '#lib/stores/upload.ts';
 import { UploadState } from '#lib/types.ts';
 import { uploadRequest } from '#lib/utils.ts';
@@ -12,8 +13,13 @@ import {
   AssetMediaStatus,
   AssetUploadAction,
   AssetVisibility,
+  cancelUploadSession,
+  createUploadSession,
+  finishUploadSession,
   getBaseUrl,
   type AssetMediaResponseDto,
+  type AssetUploadSessionFinishDto,
+  type UserConfigDto,
 } from '@immich/sdk';
 import { toastManager } from '@immich/ui';
 import { tick } from 'svelte';
@@ -138,6 +144,53 @@ function hashFile(file: File): Promise<string> {
   });
 }
 
+const getUploadChunkSize = () => {
+  const config = queryClient.getQueryData<UserConfigDto>(getUserConfigQuery().queryKey);
+  const chunkSizeMb = config?.server?.uploadChunkSizeMb;
+  return chunkSizeMb ? chunkSizeMb * 1024 * 1024 : undefined;
+};
+
+type ChunkedUploadParams = {
+  file: File;
+  chunkSize: number;
+  dto: Omit<AssetUploadSessionFinishDto, 'filename' | 'size'>;
+  onProgress: (bytes: number) => void;
+};
+
+async function chunkedUpload({ file, chunkSize, dto, onProgress }: ChunkedUploadParams) {
+  const { id } = await createUploadSession({ assetUploadSessionCreateDto: { filename: file.name, size: file.size } });
+  let isFinished = false;
+
+  try {
+    for (let start = 0, index = 1; start < file.size; start += chunkSize, index++) {
+      const sendChunk = () =>
+        uploadRequest({
+          url: `${getBaseUrl()}/assets/upload-sessions/${id}/chunks/${index}`,
+          method: 'PUT',
+          data: file.slice(start, start + chunkSize, 'application/octet-stream'),
+          onUploadProgress: (event) => onProgress(start + event.loaded),
+        });
+
+      await sendChunk().catch((error: unknown) =>
+        error instanceof ProgressEvent ? sendChunk() : Promise.reject(error),
+      );
+    }
+
+    const response = await finishUploadSession({
+      id,
+      assetUploadSessionFinishDto: { ...dto, filename: file.name, size: file.size },
+    });
+    isFinished = true;
+    return response;
+  } finally {
+    if (!isFinished) {
+      void cancelUploadSession({ id }).catch((error: unknown) =>
+        console.error('Error cancelling upload session', error),
+      );
+    }
+  }
+}
+
 type FileUploaderParams = {
   assetFile: File;
   albumId?: string;
@@ -176,11 +229,12 @@ async function fileUploader({
     }
 
     let responseData: { id: string; status: AssetMediaStatus; isTrashed?: boolean } | undefined;
+    let checksum: string | undefined;
     if (!authManager.isSharedLink) {
       uploadAssetsStore.updateItem(deviceAssetId, { message: $t('asset_hashing') });
       await tick();
       const onError = (error: unknown) => console.error(`Error calculating sha1 file=${assetFile.name})`, error);
-      const checksum = await hashFile(assetFile).catch(onError);
+      checksum = (await hashFile(assetFile).catch(onError)) ?? undefined;
       const response = checksum
         ? await executeMutation(
             checkBulkUploadMutation,
@@ -196,6 +250,23 @@ async function fileUploader({
           isTrashed: checkUploadResult.isTrashed,
         };
       }
+    }
+
+    const chunkSize = authManager.isSharedLink ? undefined : getUploadChunkSize();
+    if (!responseData && chunkSize && assetFile.size > chunkSize) {
+      uploadAssetsStore.updateItem(deviceAssetId, { message: $t('asset_uploading') });
+      responseData = await chunkedUpload({
+        file: assetFile,
+        chunkSize,
+        dto: {
+          fileCreatedAt,
+          fileModifiedAt: new Date(assetFile.lastModified).toISOString(),
+          isFavorite: false,
+          checksum,
+          ...(isLockedAssets && { visibility: AssetVisibility.Locked }),
+        },
+        onProgress: (bytes) => uploadAssetsStore.updateProgress(deviceAssetId, bytes, assetFile.size),
+      });
     }
 
     if (!responseData) {

@@ -54,7 +54,7 @@ export const initLanguage = async () => {
 interface UploadRequestOptions {
   url: string;
   method?: 'POST' | 'PUT';
-  data: FormData;
+  data: FormData | Blob;
   onUploadProgress?: (event: ProgressEvent<XMLHttpRequestEventTarget>) => void;
 }
 
