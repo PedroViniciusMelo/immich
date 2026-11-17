@@ -67,8 +67,39 @@ export class AssetMediaOptionsDto extends createZodDto({
   edited: stringToBool.default(false).optional().describe('Return edited asset if available'),
 }) {}
 
+export const UPLOAD_SESSION_MAX_CHUNKS = 10_000;
+
+const AssetUploadSessionFinishSchema = AssetMediaBaseSchema.omit({ [UploadFieldName.ASSET_DATA]: true })
+  .extend({
+    filename: z.string().min(1).describe('Original filename'),
+    size: z.int().min(1).describe('Total file size in bytes, checked against the received chunks'),
+    checksum: z.string().optional().describe('Base64 or hex encoded SHA1 hash, checked against the received chunks'),
+    isFavorite: z.boolean().optional().describe('Mark as favorite'),
+    visibility: AssetVisibilitySchema.optional(),
+    livePhotoVideoId: z.uuidv4().optional().describe('Live photo video ID'),
+    metadata: z.array(AssetMetadataUpsertItemSchema).optional().describe('Asset metadata items'),
+  })
+  .meta({ id: 'AssetUploadSessionFinishDto' });
+
 export class AssetMediaCreateDto extends createZodDto(AssetMediaCreateSchema) {}
 
 export class AssetBulkUploadCheckDto extends createZodDto({
   assets: z.array(AssetBulkUploadCheckItemSchema).describe('Assets to check'),
 }) {}
+
+export class AssetUploadSessionCreateDto extends createZodDto({
+  filename: z.string().min(1).describe('Original filename, used to validate the file type'),
+  size: z.int().min(1).describe('Total file size in bytes'),
+}) {}
+
+export class AssetUploadSessionChunkParamDto extends createZodDto({
+  id: z.uuidv4(),
+  index: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(UPLOAD_SESSION_MAX_CHUNKS)
+    .describe(`Chunk number, from 1 to ${UPLOAD_SESSION_MAX_CHUNKS}`),
+}) {}
+
+export class AssetUploadSessionFinishDto extends createZodDto(AssetUploadSessionFinishSchema) {}

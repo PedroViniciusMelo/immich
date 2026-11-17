@@ -8,6 +8,13 @@ export enum AssetMediaStatus {
 
 const AssetMediaStatusSchema = z.enum(AssetMediaStatus).describe('Upload status').meta({ id: 'AssetMediaStatus' });
 
+const AssetUploadSessionChunkSchema = z
+  .object({
+    index: z.int().min(1).describe('Chunk number'),
+    size: z.int().min(0).describe('Chunk size in bytes'),
+  })
+  .meta({ id: 'AssetUploadSessionChunkResponseDto' });
+
 export enum AssetUploadAction {
   ACCEPT = 'accept',
   REJECT = 'reject',
@@ -42,4 +49,9 @@ export class AssetMediaResponseDto extends createZodDto({
 
 export class AssetBulkUploadCheckResponseDto extends createZodDto({
   results: z.array(AssetBulkUploadCheckResultSchema).describe('Upload check results'),
+}) {}
+
+export class AssetUploadSessionResponseDto extends createZodDto({
+  id: z.uuidv4().describe('Upload session ID'),
+  chunks: z.array(AssetUploadSessionChunkSchema).describe('Chunks received so far, ordered by number'),
 }) {}

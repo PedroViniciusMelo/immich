@@ -36,6 +36,8 @@ export const ASSET_VISIBILITY_DEPENDENT_PATHS = [
   Resource.view(),
 ];
 
+export const UPLOAD_SESSION_FOLDER_SUFFIX = '.chunks';
+
 export const JOBS_ASSET_PAGINATION_SIZE = 1000;
 export const JOBS_CLEAN_BATCH_SIZE = 1000;
 export const JOBS_LIBRARY_PAGINATION_SIZE = 10_000;

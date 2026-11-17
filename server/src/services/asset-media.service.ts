@@ -1,5 +1,8 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import sanitize from 'sanitize-filename';
+import { UPLOAD_SESSION_FOLDER_SUFFIX } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { Asset, AuthSharedLink } from 'src/database.js';
 import {
@@ -8,12 +11,16 @@ import {
   AssetMediaStatus,
   AssetRejectReason,
   AssetUploadAction,
+  AssetUploadSessionResponseDto,
 } from 'src/dtos/asset-media-response.dto.js';
 import {
   AssetBulkUploadCheckDto,
   AssetMediaCreateDto,
   AssetMediaOptionsDto,
   AssetMediaSize,
+  AssetUploadSessionChunkParamDto,
+  AssetUploadSessionCreateDto,
+  AssetUploadSessionFinishDto,
   UploadFieldName,
 } from 'src/dtos/asset-media.dto.js';
 import { AssetDownloadOriginalDto } from 'src/dtos/asset.dto.js';
@@ -243,6 +250,121 @@ export class AssetMediaService extends BaseService {
 
       this.logger.error(`Error uploading file ${error}`, error?.stack);
       throw error;
+    }
+  }
+
+  async createUploadSession(auth: AuthDto, dto: AssetUploadSessionCreateDto): Promise<AssetUploadSessionResponseDto> {
+    await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
+    this.requireAssetFilename(dto.filename);
+    this.requireQuota(auth, dto.size);
+
+    const id = this.cryptoRepository.randomUUID();
+    this.storageRepository.mkdirSync(this.getUploadSessionPaths(auth, id).sessionFolder);
+
+    return { id, chunks: [] };
+  }
+
+  async getUploadSession(auth: AuthDto, id: string): Promise<AssetUploadSessionResponseDto> {
+    await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
+    const { sessionFolder } = this.getUploadSessionPaths(auth, id);
+    const chunks = await this.getUploadSessionChunks(sessionFolder);
+    return { id, chunks: chunks.map(({ index, size }) => ({ index, size })) };
+  }
+
+  async uploadSessionChunk(auth: AuthDto, { id, index }: AssetUploadSessionChunkParamDto, data: Readable) {
+    await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
+    const { sessionFolder } = this.getUploadSessionPaths(auth, id);
+    await this.getUploadSessionChunks(sessionFolder);
+
+    const chunkPath = join(sessionFolder, String(index));
+    const partPath = `${chunkPath}.${this.cryptoRepository.randomUUID()}.part`;
+    try {
+      await this.storageRepository.writeStream(partPath, data);
+      await this.storageRepository.rename(partPath, chunkPath);
+    } catch (error) {
+      await this.storageRepository.unlink(partPath);
+      throw error;
+    }
+  }
+
+  async finishUploadSession(
+    auth: AuthDto,
+    id: string,
+    { size, checksum, ...dto }: AssetUploadSessionFinishDto,
+  ): Promise<AssetMediaResponseDto> {
+    await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
+    this.requireAssetFilename(dto.filename);
+
+    const { folder, sessionFolder } = this.getUploadSessionPaths(auth, id);
+    const chunks = await this.getUploadSessionChunks(sessionFolder);
+    if (chunks.length === 0 || chunks.some((chunk, position) => chunk.index !== position + 1)) {
+      throw new BadRequestException('Upload session is missing chunks');
+    }
+
+    const receivedSize = chunks.reduce((total, chunk) => total + chunk.size, 0);
+    if (receivedSize !== size) {
+      throw new BadRequestException(`Expected ${size} bytes, but received ${receivedSize}`);
+    }
+
+    const originalPath = join(folder, sanitize(`${id}${getFilenameExtension(dto.filename)}`));
+    await this.storageRepository.concatFiles(
+      chunks.map((chunk) => chunk.path),
+      originalPath,
+    );
+
+    const fileChecksum = await this.cryptoRepository.hashFile(originalPath);
+    if (checksum && !fileChecksum.equals(fromChecksum(checksum))) {
+      await this.storageRepository.unlink(originalPath);
+      throw new BadRequestException('Checksum does not match the received chunks');
+    }
+
+    await this.storageRepository.unlinkDir(sessionFolder, { recursive: true, force: true });
+
+    return this.uploadAsset(auth, dto, {
+      uuid: id,
+      checksum: fileChecksum,
+      originalPath,
+      originalName: dto.filename,
+      size,
+    });
+  }
+
+  async cancelUploadSession(auth: AuthDto, id: string): Promise<void> {
+    await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
+    const { sessionFolder } = this.getUploadSessionPaths(auth, id);
+    await this.getUploadSessionChunks(sessionFolder);
+    await this.storageRepository.unlinkDir(sessionFolder, { recursive: true, force: true });
+  }
+
+  private getUploadSessionPaths(auth: AuthDto, id: string) {
+    const folder = StorageCore.getNestedFolder(StorageFolder.Upload, auth.user.id, id);
+    return { folder, sessionFolder: join(folder, `${id}${UPLOAD_SESSION_FOLDER_SUFFIX}`) };
+  }
+
+  private async getUploadSessionChunks(sessionFolder: string) {
+    let names: string[];
+    try {
+      names = await this.storageRepository.readdir(sessionFolder);
+    } catch {
+      throw new NotFoundException('Upload session not found');
+    }
+
+    const chunks = await Promise.all(
+      names
+        .filter((name) => /^\d+$/.test(name))
+        .map(async (name) => {
+          const path = join(sessionFolder, name);
+          const { size } = await this.storageRepository.stat(path);
+          return { index: Number(name), size, path };
+        }),
+    );
+
+    return chunks.toSorted((a, b) => a.index - b.index);
+  }
+
+  private requireAssetFilename(filename: string) {
+    if (!mimeTypes.isAsset(filename)) {
+      throw new BadRequestException(`Unsupported file type ${filename}`);
     }
   }
 

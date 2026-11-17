@@ -4,6 +4,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Stats } from 'node:fs';
+import { Readable } from 'node:stream';
 import { AssetFile } from 'src/database.js';
 import { AssetMediaStatus, AssetRejectReason, AssetUploadAction } from 'src/dtos/asset-media-response.dto.js';
 import { AssetMediaCreateDto, AssetMediaSize, UploadFieldName } from 'src/dtos/asset-media.dto.js';
@@ -169,6 +171,11 @@ const assetEntity = Object.freeze({
   },
   livePhotoVideoId: null,
 } as MapAsset);
+
+const withChunks = (mocks: ServiceMocks, sizes: Record<string, number>) => {
+  mocks.storage.readdir.mockResolvedValue(Object.keys(sizes));
+  mocks.storage.stat.mockImplementation((path) => Promise.resolve({ size: sizes[path.split('/').at(-1)!] } as Stats));
+};
 
 describe(AssetMediaService.name, () => {
   let sut: AssetMediaService;
@@ -953,6 +960,183 @@ describe(AssetMediaService.name, () => {
       });
 
       expect(mocks.asset.getByChecksums).toHaveBeenCalledWith(authStub.admin.user.id, [file1, file2]);
+    });
+  });
+
+  describe('upload sessions', () => {
+    const sessionId = 'f6d2e1c8-6a5b-4c3d-9e8f-7a6b5c4d3e2f';
+    const sessionFolder = `/data/upload/${authStub.user1.user.id}/f6/d2/${sessionId}.chunks`;
+    const finishDto = {
+      filename: 'video.mp4',
+      size: 30,
+      fileCreatedAt: new Date('2022-06-19T23:41:36.910Z'),
+      fileModifiedAt: new Date('2022-06-19T23:41:36.910Z'),
+    };
+
+    beforeEach(() => {
+      mocks.crypto.randomUUID.mockReturnValue(sessionId);
+    });
+
+    describe('createUploadSession', () => {
+      it('should create the session folder', async () => {
+        await expect(sut.createUploadSession(authStub.user1, { filename: 'video.mp4', size: 100 })).resolves.toEqual({
+          id: sessionId,
+          chunks: [],
+        });
+
+        expect(mocks.storage.mkdirSync).toHaveBeenCalledWith(sessionFolder);
+      });
+
+      it('should reject unsupported files', async () => {
+        await expect(
+          sut.createUploadSession(authStub.user1, { filename: 'notes.txt', size: 100 }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        expect(mocks.storage.mkdirSync).not.toHaveBeenCalled();
+      });
+
+      it('should reject a file that exceeds the quota', async () => {
+        const auth = {
+          ...authStub.user1,
+          user: { ...authStub.user1.user, quotaSizeInBytes: 50, quotaUsageInBytes: 0 },
+        };
+
+        await expect(sut.createUploadSession(auth, { filename: 'video.mp4', size: 100 })).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+      });
+    });
+
+    describe('getUploadSession', () => {
+      it('should list the received chunks in order', async () => {
+        withChunks(mocks, { '10': 5, '2': 10, '1': 10, '3.random-uuid.part': 4 });
+
+        await expect(sut.getUploadSession(authStub.user1, sessionId)).resolves.toEqual({
+          id: sessionId,
+          chunks: [
+            { index: 1, size: 10 },
+            { index: 2, size: 10 },
+            { index: 10, size: 5 },
+          ],
+        });
+      });
+
+      it('should throw when the session does not exist', async () => {
+        mocks.storage.readdir.mockRejectedValue(new Error('ENOENT'));
+
+        await expect(sut.getUploadSession(authStub.user1, sessionId)).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('uploadSessionChunk', () => {
+      it('should write the chunk to a part file and move it into place', async () => {
+        withChunks(mocks, {});
+        mocks.crypto.randomUUID.mockReturnValue('part-id');
+        const data = Readable.from([Buffer.from('chunk')]);
+
+        await sut.uploadSessionChunk(authStub.user1, { id: sessionId, index: 2 }, data);
+
+        expect(mocks.storage.writeStream).toHaveBeenCalledWith(`${sessionFolder}/2.part-id.part`, data);
+        expect(mocks.storage.rename).toHaveBeenCalledWith(`${sessionFolder}/2.part-id.part`, `${sessionFolder}/2`);
+      });
+
+      it('should remove the part file when the transfer fails', async () => {
+        withChunks(mocks, {});
+        mocks.crypto.randomUUID.mockReturnValue('part-id');
+        mocks.storage.writeStream.mockRejectedValue(new Error('aborted'));
+
+        await expect(
+          sut.uploadSessionChunk(authStub.user1, { id: sessionId, index: 1 }, Readable.from([])),
+        ).rejects.toThrow('aborted');
+
+        expect(mocks.storage.unlink).toHaveBeenCalledWith(`${sessionFolder}/1.part-id.part`);
+        expect(mocks.storage.rename).not.toHaveBeenCalled();
+      });
+
+      it('should throw when the session does not exist', async () => {
+        mocks.storage.readdir.mockRejectedValue(new Error('ENOENT'));
+
+        await expect(
+          sut.uploadSessionChunk(authStub.user1, { id: sessionId, index: 1 }, Readable.from([])),
+        ).rejects.toBeInstanceOf(NotFoundException);
+
+        expect(mocks.storage.writeStream).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('finishUploadSession', () => {
+      const checksum = Buffer.from('file hash');
+      const originalPath = `/data/upload/${authStub.user1.user.id}/f6/d2/${sessionId}.mp4`;
+
+      it('should assemble the chunks and create the asset', async () => {
+        withChunks(mocks, { '1': 10, '2': 10, '3': 10 });
+        mocks.crypto.hashFile.mockResolvedValue(checksum);
+        mocks.asset.create.mockResolvedValue(assetEntity);
+
+        await expect(
+          sut.finishUploadSession(authStub.user1, sessionId, { ...finishDto, checksum: checksum.toString('hex') }),
+        ).resolves.toEqual({ id: 'id_1', status: AssetMediaStatus.CREATED });
+
+        expect(mocks.storage.concatFiles).toHaveBeenCalledWith(
+          [`${sessionFolder}/1`, `${sessionFolder}/2`, `${sessionFolder}/3`],
+          originalPath,
+        );
+        expect(mocks.storage.unlinkDir).toHaveBeenCalledWith(sessionFolder, { recursive: true, force: true });
+        expect(mocks.asset.create).toHaveBeenCalledWith(
+          expect.objectContaining({ checksum, originalPath, originalFileName: 'video.mp4', type: AssetType.Video }),
+        );
+      });
+
+      it('should reject when a chunk is missing', async () => {
+        withChunks(mocks, { '1': 10, '3': 20 });
+
+        await expect(sut.finishUploadSession(authStub.user1, sessionId, finishDto)).rejects.toThrow(
+          'Upload session is missing chunks',
+        );
+
+        expect(mocks.storage.concatFiles).not.toHaveBeenCalled();
+      });
+
+      it('should reject when the received size does not match', async () => {
+        withChunks(mocks, { '1': 10, '2': 10 });
+
+        await expect(sut.finishUploadSession(authStub.user1, sessionId, finishDto)).rejects.toThrow(
+          'Expected 30 bytes, but received 20',
+        );
+
+        expect(mocks.storage.concatFiles).not.toHaveBeenCalled();
+      });
+
+      it('should reject and keep the chunks when the checksum does not match', async () => {
+        withChunks(mocks, { '1': 30 });
+        mocks.crypto.hashFile.mockResolvedValue(checksum);
+
+        await expect(
+          sut.finishUploadSession(authStub.user1, sessionId, { ...finishDto, checksum: 'a'.repeat(40) }),
+        ).rejects.toThrow('Checksum does not match the received chunks');
+
+        expect(mocks.storage.unlink).toHaveBeenCalledWith(originalPath);
+        expect(mocks.storage.unlinkDir).not.toHaveBeenCalled();
+        expect(mocks.asset.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('cancelUploadSession', () => {
+      it('should remove the session folder', async () => {
+        withChunks(mocks, { '1': 10 });
+
+        await sut.cancelUploadSession(authStub.user1, sessionId);
+
+        expect(mocks.storage.unlinkDir).toHaveBeenCalledWith(sessionFolder, { recursive: true, force: true });
+      });
+
+      it('should throw when the session does not exist', async () => {
+        mocks.storage.readdir.mockRejectedValue(new Error('ENOENT'));
+
+        await expect(sut.cancelUploadSession(authStub.user1, sessionId)).rejects.toBeInstanceOf(NotFoundException);
+
+        expect(mocks.storage.unlinkDir).not.toHaveBeenCalled();
+      });
     });
   });
 
