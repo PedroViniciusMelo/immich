@@ -137,7 +137,7 @@ export class AssetMediaController {
     @Param() dto: AssetUploadSessionChunkParamDto,
     @Req() req: Request,
   ): Promise<void> {
-    return this.service.uploadSessionChunk(auth, dto, req);
+    return this.service.uploadSessionChunk(auth, dto, req, Number(req.headers['content-length']) || undefined);
   }
 
   @Post('upload-sessions/:id/finish')

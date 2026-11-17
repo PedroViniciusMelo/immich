@@ -59,15 +59,21 @@ import {
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { fromChecksum } from 'src/utils/request.js';
 
+const requireChunkSize = (size: number, maxChunkSize: number) => {
+  if (size > maxChunkSize) {
+    throw new PayloadTooLargeException(`Chunk is larger than the maximum chunk size of ${maxChunkSize} bytes`);
+  }
+};
+
 async function* limitChunkSize(data: AsyncIterable<Buffer>, maxChunkSize: number) {
   let size = 0;
   for await (const buffer of data) {
     size += buffer.length;
-    if (size > maxChunkSize) {
-      throw new PayloadTooLargeException(`Chunk is larger than the maximum chunk size of ${maxChunkSize} bytes`);
+    if (size <= maxChunkSize) {
+      yield buffer;
     }
-    yield buffer;
   }
+  requireChunkSize(size, maxChunkSize);
 }
 
 export interface AssetMediaRedirectResponse {
@@ -292,7 +298,12 @@ export class AssetMediaService extends BaseService {
     return { id, chunks: chunks.map(({ index, size }) => ({ index, size })) };
   }
 
-  async uploadSessionChunk(auth: AuthDto, { id, index }: AssetUploadSessionChunkParamDto, data: Readable) {
+  async uploadSessionChunk(
+    auth: AuthDto,
+    { id, index }: AssetUploadSessionChunkParamDto,
+    data: Readable,
+    declaredSize = 0,
+  ) {
     await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
     const { sessionFolder } = this.getUploadSessionPaths(auth, id);
     const chunks = await this.getUploadSessionChunks(sessionFolder);
@@ -303,6 +314,7 @@ export class AssetMediaService extends BaseService {
 
     const { server } = await this.getConfig({ withCache: true });
     const maxChunkSize = server.uploadChunkSizeMb * 1024 * 1024;
+    requireChunkSize(declaredSize, maxChunkSize);
 
     const chunkPath = join(sessionFolder, String(index));
     const partPath = `${chunkPath}.${this.cryptoRepository.randomUUID()}.part`;

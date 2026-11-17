@@ -230,7 +230,7 @@ describe(AssetMediaController.name, () => {
         .send(assetData);
 
       expect(status).toBe(204);
-      expect(service.uploadSessionChunk).toHaveBeenCalledWith(undefined, { id, index: 3 }, expect.anything());
+      expect(service.uploadSessionChunk).toHaveBeenCalledWith(undefined, { id, index: 3 }, expect.anything(), 3);
     });
   });
 

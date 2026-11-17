@@ -1074,6 +1074,17 @@ describe(AssetMediaService.name, () => {
         expect(mocks.storage.rename).not.toHaveBeenCalled();
       });
 
+      it('should reject a chunk whose declared size is too large without reading it', async () => {
+        withChunks(mocks, {});
+        mocks.systemMetadata.get.mockResolvedValue({ server: { uploadChunkSizeMb: 1 } });
+
+        await expect(
+          sut.uploadSessionChunk(authStub.user1, { id: sessionId, index: 1 }, Readable.from([]), 1024 * 1024 + 1),
+        ).rejects.toBeInstanceOf(PayloadTooLargeException);
+
+        expect(mocks.storage.writeStream).not.toHaveBeenCalled();
+      });
+
       it('should reject chunks once the received data exceeds the quota', async () => {
         withChunks(mocks, { '1': 60 });
         const auth = {
