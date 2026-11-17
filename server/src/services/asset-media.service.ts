@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  PayloadTooLargeException,
+} from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -52,6 +58,17 @@ import {
 } from 'src/utils/file.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { fromChecksum } from 'src/utils/request.js';
+
+async function* limitChunkSize(data: AsyncIterable<Buffer>, maxChunkSize: number) {
+  let size = 0;
+  for await (const buffer of data) {
+    size += buffer.length;
+    if (size > maxChunkSize) {
+      throw new PayloadTooLargeException(`Chunk is larger than the maximum chunk size of ${maxChunkSize} bytes`);
+    }
+    yield buffer;
+  }
+}
 
 export interface AssetMediaRedirectResponse {
   targetSize: AssetMediaSize | 'original';
@@ -284,10 +301,13 @@ export class AssetMediaService extends BaseService {
       chunks.reduce((total, chunk) => total + chunk.size, 0),
     );
 
+    const { server } = await this.getConfig({ withCache: true });
+    const maxChunkSize = server.uploadChunkSizeMb * 1024 * 1024;
+
     const chunkPath = join(sessionFolder, String(index));
     const partPath = `${chunkPath}.${this.cryptoRepository.randomUUID()}.part`;
     try {
-      await this.storageRepository.writeStream(partPath, data);
+      await this.storageRepository.writeStream(partPath, Readable.from(limitChunkSize(data, maxChunkSize)));
       await this.storageRepository.rename(partPath, chunkPath);
     } catch (error) {
       await this.storageRepository.unlink(partPath);

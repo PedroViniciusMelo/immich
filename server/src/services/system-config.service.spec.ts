@@ -193,6 +193,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     externalDomain: '',
     loginPageMessage: '',
     publicUsers: true,
+    uploadChunkSizeMb: 50,
   },
   storageTemplate: {
     enabled: false,

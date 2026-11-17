@@ -443,6 +443,12 @@ const AdminConfigSchemaWithVisibility = z
           .meta({ visibility: User }),
         loginPageMessage: z.string().describe('Login page message').meta({ visibility: Public }),
         publicUsers: configBool.describe('Public users').meta({ visibility: User }),
+        uploadChunkSizeMb: z
+          .int()
+          .min(1)
+          .max(4096)
+          .describe('Maximum chunk size in MiB for chunked uploads')
+          .meta({ visibility: User }),
       })
       .meta({ id: 'AdminConfigServerDto' }),
     user: z
@@ -825,6 +831,7 @@ export const defaults = Object.freeze<SystemConfig>({
     externalDomain: '',
     loginPageMessage: '',
     publicUsers: true,
+    uploadChunkSizeMb: 50,
   },
   notifications: {
     smtp: {

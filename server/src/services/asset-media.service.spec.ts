@@ -2,6 +2,7 @@ import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
+  PayloadTooLargeException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Stats } from 'node:fs';
@@ -1036,7 +1037,7 @@ describe(AssetMediaService.name, () => {
 
         await sut.uploadSessionChunk(authStub.user1, { id: sessionId, index: 2 }, data);
 
-        expect(mocks.storage.writeStream).toHaveBeenCalledWith(`${sessionFolder}/2.part-id.part`, data);
+        expect(mocks.storage.writeStream).toHaveBeenCalledWith(`${sessionFolder}/2.part-id.part`, expect.any(Readable));
         expect(mocks.storage.rename).toHaveBeenCalledWith(`${sessionFolder}/2.part-id.part`, `${sessionFolder}/2`);
       });
 
@@ -1048,6 +1049,26 @@ describe(AssetMediaService.name, () => {
         await expect(
           sut.uploadSessionChunk(authStub.user1, { id: sessionId, index: 1 }, Readable.from([])),
         ).rejects.toThrow('aborted');
+
+        expect(mocks.storage.unlink).toHaveBeenCalledWith(`${sessionFolder}/1.part-id.part`);
+        expect(mocks.storage.rename).not.toHaveBeenCalled();
+      });
+
+      it('should reject a chunk larger than the configured chunk size', async () => {
+        withChunks(mocks, {});
+        mocks.crypto.randomUUID.mockReturnValue('part-id');
+        mocks.systemMetadata.get.mockResolvedValue({ server: { uploadChunkSizeMb: 1 } });
+        mocks.storage.writeStream.mockImplementation(async (_path, stream) => {
+          await stream.toArray();
+        });
+
+        await expect(
+          sut.uploadSessionChunk(
+            authStub.user1,
+            { id: sessionId, index: 1 },
+            Readable.from([Buffer.alloc(1024 * 1024), Buffer.alloc(1)]),
+          ),
+        ).rejects.toBeInstanceOf(PayloadTooLargeException);
 
         expect(mocks.storage.unlink).toHaveBeenCalledWith(`${sessionFolder}/1.part-id.part`);
         expect(mocks.storage.rename).not.toHaveBeenCalled();
