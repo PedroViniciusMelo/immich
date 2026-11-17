@@ -4451,6 +4451,317 @@
         "x-immich-state": "Stable"
       }
     },
+    "/assets/upload-sessions": {
+      "post": {
+        "description": "Starts a chunked upload. Upload the file in numbered chunks to the session, then finish it to create the asset.",
+        "operationId": "createUploadSession",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetUploadSessionCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetUploadSessionResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Create upload session",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "state": "Added",
+            "version": "v3.4.0"
+          },
+          {
+            "state": "Beta",
+            "version": "v3.4.0"
+          }
+        ],
+        "x-immich-permission": "asset.upload",
+        "x-immich-state": "Beta"
+      }
+    },
+    "/assets/upload-sessions/{id}": {
+      "delete": {
+        "description": "Discards the session and every chunk uploaded to it.",
+        "operationId": "cancelUploadSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Cancel upload session",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "state": "Added",
+            "version": "v3.4.0"
+          },
+          {
+            "state": "Beta",
+            "version": "v3.4.0"
+          }
+        ],
+        "x-immich-permission": "asset.upload",
+        "x-immich-state": "Beta"
+      },
+      "get": {
+        "description": "Lists the chunks received so far, so an interrupted upload can be resumed.",
+        "operationId": "getUploadSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetUploadSessionResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get upload session",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "state": "Added",
+            "version": "v3.4.0"
+          },
+          {
+            "state": "Beta",
+            "version": "v3.4.0"
+          }
+        ],
+        "x-immich-permission": "asset.upload",
+        "x-immich-state": "Beta"
+      }
+    },
+    "/assets/upload-sessions/{id}/chunks/{index}": {
+      "put": {
+        "description": "Stores one chunk of the file. Uploading the same chunk number again replaces it, so a failed chunk can simply be retried.",
+        "operationId": "uploadSessionChunk",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Chunk number, from 1 to 10000",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "Chunk data",
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Upload chunk",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "state": "Added",
+            "version": "v3.4.0"
+          },
+          {
+            "state": "Beta",
+            "version": "v3.4.0"
+          }
+        ],
+        "x-immich-permission": "asset.upload",
+        "x-immich-state": "Beta"
+      }
+    },
+    "/assets/upload-sessions/{id}/finish": {
+      "post": {
+        "description": "Assembles the uploaded chunks in order and creates the asset.",
+        "operationId": "finishUploadSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetUploadSessionFinishDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetMediaResponseDto"
+                }
+              }
+            },
+            "description": "Asset is a duplicate"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetMediaResponseDto"
+                }
+              }
+            },
+            "description": "Asset uploaded successfully"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Finish upload session",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "state": "Added",
+            "version": "v3.4.0"
+          },
+          {
+            "state": "Beta",
+            "version": "v3.4.0"
+          }
+        ],
+        "x-immich-permission": "asset.upload",
+        "x-immich-state": "Beta"
+      }
+    },
     "/assets/{id}": {
       "get": {
         "description": "Retrieve detailed information about a specific asset.",
@@ -22204,6 +22515,135 @@
         ],
         "type": "string"
       },
+      "AssetUploadSessionChunkResponseDto": {
+        "properties": {
+          "index": {
+            "description": "Chunk number",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "size": {
+            "description": "Chunk size in bytes",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index",
+          "size"
+        ],
+        "type": "object"
+      },
+      "AssetUploadSessionCreateDto": {
+        "properties": {
+          "filename": {
+            "description": "Original filename, used to validate the file type",
+            "minLength": 1,
+            "type": "string"
+          },
+          "size": {
+            "description": "Total file size in bytes",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filename",
+          "size"
+        ],
+        "type": "object"
+      },
+      "AssetUploadSessionFinishDto": {
+        "properties": {
+          "checksum": {
+            "description": "Base64 or hex encoded SHA1 hash, checked against the received chunks",
+            "type": "string"
+          },
+          "duration": {
+            "description": "Duration in milliseconds (for videos)",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fileCreatedAt": {
+            "description": "File creation date",
+            "example": "2024-01-01T00:00:00.000Z",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "fileModifiedAt": {
+            "description": "File modification date",
+            "example": "2024-01-01T00:00:00.000Z",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "filename": {
+            "description": "Original filename",
+            "minLength": 1,
+            "type": "string"
+          },
+          "isFavorite": {
+            "description": "Mark as favorite",
+            "type": "boolean"
+          },
+          "livePhotoVideoId": {
+            "description": "Live photo video ID",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Asset metadata items",
+            "items": {
+              "$ref": "#/components/schemas/AssetMetadataUpsertItemDto"
+            },
+            "type": "array"
+          },
+          "size": {
+            "description": "Total file size in bytes, checked against the received chunks",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/AssetVisibility"
+          }
+        },
+        "required": [
+          "fileCreatedAt",
+          "fileModifiedAt",
+          "filename",
+          "size"
+        ],
+        "type": "object"
+      },
+      "AssetUploadSessionResponseDto": {
+        "properties": {
+          "chunks": {
+            "description": "Chunks received so far, ordered by number",
+            "items": {
+              "$ref": "#/components/schemas/AssetUploadSessionChunkResponseDto"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "Upload session ID",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunks",
+          "id"
+        ],
+        "type": "object"
+      },
       "AssetVisibility": {
         "description": "Asset visibility",
         "enum": [
@@ -23655,6 +24095,7 @@
           "LibrarySyncFiles",
           "LibraryScanQueueAll",
           "HlsSessionCleanup",
+          "UploadSessionCleanup",
           "MemoryCleanup",
           "MemoryGenerate",
           "NotificationsCleanup",
@@ -29108,13 +29549,15 @@
         "enum": [
           1,
           2,
-          3
+          3,
+          4
         ],
         "type": "integer",
         "x-enum-varnames": [
           "FeatureLevel",
           "Passkeys",
-          "SyncPendingReset"
+          "SyncPendingReset",
+          "ChunkedUpload"
         ]
       },
       "ServerFeaturesDto": {

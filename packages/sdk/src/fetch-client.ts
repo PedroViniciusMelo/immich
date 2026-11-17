@@ -1223,6 +1223,45 @@ export type AssetMetadataBulkResponseDto = {
         [key: string]: any;
     };
 };
+export type AssetUploadSessionCreateDto = {
+    /** Original filename, used to validate the file type */
+    filename: string;
+    /** Total file size in bytes */
+    size: number;
+};
+export type AssetUploadSessionChunkResponseDto = {
+    /** Chunk number */
+    index: number;
+    /** Chunk size in bytes */
+    size: number;
+};
+export type AssetUploadSessionResponseDto = {
+    /** Chunks received so far, ordered by number */
+    chunks: AssetUploadSessionChunkResponseDto[];
+    /** Upload session ID */
+    id: string;
+};
+export type AssetUploadSessionFinishDto = {
+    /** Base64 or hex encoded SHA1 hash, checked against the received chunks */
+    checksum?: string;
+    /** Duration in milliseconds (for videos) */
+    duration?: number;
+    /** File creation date */
+    fileCreatedAt: string;
+    /** File modification date */
+    fileModifiedAt: string;
+    /** Original filename */
+    filename: string;
+    /** Mark as favorite */
+    isFavorite?: boolean;
+    /** Live photo video ID */
+    livePhotoVideoId?: string;
+    /** Asset metadata items */
+    metadata?: AssetMetadataUpsertItemDto[];
+    /** Total file size in bytes, checked against the received chunks */
+    size: number;
+    visibility?: AssetVisibility;
+};
 export type ExifResponseDto = {
     /** City name */
     city?: string | null;
@@ -5028,6 +5067,78 @@ export function getAssetStatistics({ isFavorite, isTrashed, visibility }: {
     }));
 }
 /**
+ * Create upload session
+ */
+export function createUploadSession({ assetUploadSessionCreateDto }: {
+    assetUploadSessionCreateDto: AssetUploadSessionCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: AssetUploadSessionResponseDto;
+    }>("/assets/upload-sessions", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: assetUploadSessionCreateDto
+    })));
+}
+/**
+ * Cancel upload session
+ */
+export function cancelUploadSession({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/assets/upload-sessions/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Get upload session
+ */
+export function getUploadSession({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: AssetUploadSessionResponseDto;
+    }>(`/assets/upload-sessions/${encodeURIComponent(id)}`, {
+        ...opts
+    }));
+}
+/**
+ * Upload chunk
+ */
+export function uploadSessionChunk({ id, index, body }: {
+    id: string;
+    index: number;
+    body: Blob;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/assets/upload-sessions/${encodeURIComponent(id)}/chunks/${encodeURIComponent(index)}`, {
+        ...opts,
+        method: "PUT",
+        body
+    }));
+}
+/**
+ * Finish upload session
+ */
+export function finishUploadSession({ id, assetUploadSessionFinishDto }: {
+    id: string;
+    assetUploadSessionFinishDto: AssetUploadSessionFinishDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: AssetMediaResponseDto;
+    } | {
+        status: 201;
+        data: AssetMediaResponseDto;
+    }>(`/assets/upload-sessions/${encodeURIComponent(id)}/finish`, oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: assetUploadSessionFinishDto
+    })));
+}
+/**
  * Retrieve an asset
  */
 export function getAssetInfo({ id, key, slug }: {
@@ -8775,6 +8886,7 @@ export enum JobName {
     LibrarySyncFiles = "LibrarySyncFiles",
     LibraryScanQueueAll = "LibraryScanQueueAll",
     HlsSessionCleanup = "HlsSessionCleanup",
+    UploadSessionCleanup = "UploadSessionCleanup",
     MemoryCleanup = "MemoryCleanup",
     MemoryGenerate = "MemoryGenerate",
     NotificationsCleanup = "NotificationsCleanup",
@@ -8954,7 +9066,8 @@ export enum ReleaseType {
 export enum ServerFeatureLevel {
     FeatureLevel = 1,
     Passkeys = 2,
-    SyncPendingReset = 3
+    SyncPendingReset = 3,
+    ChunkedUpload = 4
 }
 export enum UserMetadataKey {
     Preferences = "preferences",
