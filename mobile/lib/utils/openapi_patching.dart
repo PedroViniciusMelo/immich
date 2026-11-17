@@ -58,8 +58,10 @@ final Map<String, Map<String, Object?>> openApiPatches = {
   'AdminConfigDto': {
     'passkey': {'enabled': false, 'domain': null, 'additionalDomains': const []},
   },
+  'AdminConfigServerDto': {'uploadChunkSizeMb': 50},
   'AdminConfigGeneratedImageDto': {'effort': 'medium'},
   'AdminConfigGeneratedFullsizeImageDto': {'effort': 'medium'},
+  'UserConfigServerDto': {'uploadChunkSizeMb': 50},
   'UserConfigDto': {
     'notifications': UserConfigNotificationsDto(smtp: UserConfigSmtpDto(enabled: false)).toJson(),
     'passkey': {'enabled': false},

@@ -384,6 +384,8 @@ export type AdminConfigServerDto = {
     loginPageMessage: string;
     /** Public users */
     publicUsers: boolean;
+    /** Maximum chunk size in MiB for chunked uploads */
+    uploadChunkSizeMb: number;
 };
 export type AdminConfigStorageTemplateDto = {
     /** Enabled */
@@ -1737,6 +1739,8 @@ export type UserConfigServerDto = {
     loginPageMessage: string;
     /** Public users */
     publicUsers: boolean;
+    /** Maximum chunk size in MiB for chunked uploads */
+    uploadChunkSizeMb: number;
 };
 export type UserConfigTrashDto = {
     /** Days */

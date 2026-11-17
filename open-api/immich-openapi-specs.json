@@ -20550,12 +20550,19 @@
           "publicUsers": {
             "description": "Public users",
             "type": "boolean"
+          },
+          "uploadChunkSizeMb": {
+            "description": "Maximum chunk size in MiB for chunked uploads",
+            "maximum": 4096,
+            "minimum": 1,
+            "type": "integer"
           }
         },
         "required": [
           "externalDomain",
           "loginPageMessage",
-          "publicUsers"
+          "publicUsers",
+          "uploadChunkSizeMb"
         ],
         "type": "object"
       },
@@ -35722,12 +35729,19 @@
           "publicUsers": {
             "description": "Public users",
             "type": "boolean"
+          },
+          "uploadChunkSizeMb": {
+            "description": "Maximum chunk size in MiB for chunked uploads",
+            "maximum": 4096,
+            "minimum": 1,
+            "type": "integer"
           }
         },
         "required": [
           "externalDomain",
           "loginPageMessage",
-          "publicUsers"
+          "publicUsers",
+          "uploadChunkSizeMb"
         ],
         "type": "object"
       },
