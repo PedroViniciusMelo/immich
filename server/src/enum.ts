@@ -1350,6 +1350,7 @@ export enum ServerFeatureLevel {
   FeatureLevel = 1,
   Passkeys = 2,
   SyncPendingReset = 3,
+  ChunkedUpload = 4,
 }
 
 export const ServerFeatureLevelSchema = z
